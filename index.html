@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenHands Event Stream — Live Demo</title>
+<style>
+  :root {
+    --navy: #16223F;
+    --navy2: #1E2E52;
+    --ice: #D7E3FA;
+    --offwhite: #F7F9FC;
+    --muted: #5B6B8C;
+    --red: #D62839;
+    --red-bg: #FBE4E6;
+    --green: #0FA96E;
+    --green-bg: #DEF7EC;
+    --amber: #D98A1C;
+    --amber-bg: #FBECD3;
+    --cyan: #1C86C9;
+    --cyan-bg: #DFF0FB;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Pretendard", -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    background: var(--offwhite);
+    color: var(--navy);
+  }
+
+  header {
+    background: var(--navy);
+    color: white;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 700; }
+  header .sub { font-size: 12px; color: var(--ice); margin-top: 2px; }
+
+  #loop-badge {
+    background: var(--amber);
+    color: white;
+    font-weight: 800;
+    font-size: 20px;
+    padding: 8px 22px;
+    border-radius: 999px;
+    transition: transform .25s ease, background .25s ease;
+    box-shadow: 0 0 0 rgba(217,138,28,0.6);
+  }
+  #loop-badge.flash {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 8px rgba(217,138,28,0.0);
+  }
+
+  #status-line {
+    font-size: 13px;
+    color: var(--ice);
+  }
+
+  .controls {
+    background: white;
+    border-bottom: 1px solid #E3E8F2;
+    padding: 12px 24px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .controls textarea {
+    flex: 1;
+    min-width: 280px;
+    min-height: 52px;
+    border: 1px solid #C9D4E8;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .controls button {
+    background: var(--navy);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0 22px;
+    height: 52px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .controls button:disabled { background: #9AA6C0; cursor: not-allowed; }
+  .controls .hint { flex-basis: 100%; font-size: 11px; color: var(--muted); }
+
+  #warn-banner {
+    background: var(--red-bg);
+    color: var(--red);
+    padding: 8px 24px;
+    font-size: 13px;
+    font-weight: 600;
+    display: none;
+  }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1.35fr 1fr;
+    gap: 14px;
+    padding: 16px;
+    align-items: start;
+  }
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: white;
+    border: 1px solid #E3E8F2;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 520px;
+  }
+  .panel-head {
+    background: var(--navy2);
+    color: white;
+    padding: 10px 16px;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-head .tag {
+    font-size: 10px;
+    font-weight: 700;
+    background: var(--ice);
+    color: var(--navy);
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .panel-body {
+    padding: 12px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    max-height: 640px;
+  }
+
+  /* --- User Interface panel --- */
+  .bubble {
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .bubble.user { background: var(--amber-bg); border: 1px solid var(--amber); }
+  .bubble.agent { background: var(--cyan-bg); border: 1px solid var(--cyan); }
+  .status-note {
+    font-size: 12.5px;
+    color: var(--navy);
+    background: var(--offwhite);
+    border-left: 3px solid var(--navy2);
+    padding: 6px 10px;
+    border-radius: 4px;
+  }
+
+  /* --- Event Stream panel --- */
+  .ev-card {
+    border-radius: 10px;
+    border: 1px solid #E3E8F2;
+    padding: 10px 12px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    opacity: 0;
+    transform: translateY(6px);
+    animation: pop-in .35s ease forwards;
+  }
+  @keyframes pop-in { to { opacity: 1; transform: translateY(0); } }
+  .ev-card .ev-head {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 700;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  .ev-card .ev-num { color: var(--muted); font-weight: 600; }
+  .ev-card pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+  }
+  .ev-card.message_user { background: var(--amber-bg); border-color: var(--amber); }
+  .ev-card.action { background: var(--cyan-bg); border-color: var(--cyan); }
+  .ev-card.observation { background: var(--green-bg); border-color: var(--green); }
+  .ev-card.error { background: var(--red-bg); border-color: var(--red); }
+  .ev-card.message_agent { background: #EFEAFB; border-color: #7A5FD6; }
+  .ev-card.other { background: var(--offwhite); border-color: #C9D4E8; }
+
+  .ev-card.just-added {
+    box-shadow: 0 0 0 3px rgba(28,134,201,0.45);
+  }
+
+  .loop-divider {
+    text-align: center;
+    font-weight: 800;
+    font-size: 13px;
+    color: var(--amber);
+    background: var(--amber-bg);
+    border: 1px dashed var(--amber);
+    border-radius: 8px;
+    padding: 6px 0;
+    letter-spacing: .5px;
+  }
+
+  #stream-count {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 2px 16px 0;
+  }
+
+  /* --- Agent Runtime panel --- */
+  .sandbox-box {
+    border: 2px dashed #9AA6C0;
+    border-radius: 10px;
+    padding: 12px;
+  }
+  .sandbox-box h4 { margin: 0 0 10px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .tool-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tool-chip {
+    flex: 1;
+    min-width: 90px;
+    text-align: center;
+    padding: 12px 6px;
+    border-radius: 10px;
+    border: 2px solid #E3E8F2;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    transition: all .2s ease;
+  }
+  .tool-chip .emoji { font-size: 22px; display: block; margin-bottom: 4px; }
+  .tool-chip.active {
+    border-color: var(--cyan);
+    background: var(--cyan-bg);
+    color: var(--navy);
+    transform: scale(1.05);
+    box-shadow: 0 2px 10px rgba(28,134,201,0.35);
+  }
+  .runtime-log {
+    background: #0E1730;
+    color: #9FE8B0;
+    border-radius: 8px;
+    padding: 10px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 120px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .runtime-note { font-size: 12px; color: var(--muted); }
+
+  footer {
+    text-align: center;
+    font-size: 11px;
+    color: var(--muted);
+    padding: 10px 0 20px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>OpenHands Event Stream — Live Demo</h1>
+    <div class="sub" id="status-line">대기 중</div>
+  </div>
+  <div id="loop-badge">Loop 0</div>
+</header>
+
+{% if not openhands_available %}
+<div id="warn-banner" style="display:block;">
+  ⚠️ openhands-sdk / openhands-tools 가 설치되어 있지 않습니다. 서버를 실행한 터미널에서
+  <code>pip install -U openhands-sdk openhands-tools</code> 실행 후 서버를 재시작하세요.
+  ({{ import_error }})
+</div>
+{% endif %}
+
+<div class="controls">
+  <textarea id="task-input" placeholder="태스크를 입력하세요 (비워두면 기본 취약점 스캔 태스크 사용)">{{ default_task }}</textarea>
+  <button id="start-btn" onclick="startDemo()">▶ 데모 시작</button>
+  <div class="hint">워크스페이스: <code>{{ default_workspace }}</code> — 이 폴더의 코드를 실제로 스캔/수정합니다.</div>
+</div>
+
+<main>
+  <!-- User Interface -->
+  <section class="panel">
+    <div class="panel-head">🖥 User Interface <span class="tag">1</span></div>
+    <div class="panel-body" id="ui-panel"></div>
+  </section>
+
+  <!-- Event Stream -->
+  <section class="panel">
+    <div class="panel-head">🗂 Event Stream <span class="tag">2</span></div>
+    <div id="stream-count">누적 이벤트: 0개</div>
+    <div class="panel-body" id="stream-panel"></div>
+  </section>
+
+  <!-- Agent Runtime -->
+  <section class="panel">
+    <div class="panel-head">🐳 Agent Runtime — Docker Sandbox <span class="tag">3</span></div>
+    <div class="panel-body">
+      <div class="sandbox-box">
+        <h4>실행 도구</h4>
+        <div class="tool-row">
+          <div class="tool-chip" id="tool-terminal"><span class="emoji">💻</span>Bash Shell</div>
+          <div class="tool-chip" id="tool-file_editor"><span class="emoji">📝</span>File Editor</div>
+          <div class="tool-chip" id="tool-browser"><span class="emoji">🌐</span>Browser</div>
+        </div>
+      </div>
+      <div class="runtime-note" id="runtime-note">아직 실행된 도구가 없습니다.</div>
+      <div class="runtime-log" id="runtime-log">$ 대기 중...</div>
+    </div>
+  </section>
+</main>
+
+<footer>Agent가 Event History를 검토 → Action 생성 → Runtime 실행 → Observation → Event Stream 갱신 → 다시 검토 (반복)</footer>
+
+<script>
+let evtSource = null;
+let currentLoop = 0;
+let eventCount = 0;
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+function scrollToBottom(node) { node.scrollTop = node.scrollHeight; }
+
+function setStatus(msg) {
+  document.getElementById('status-line').textContent = msg;
+}
+
+function flashLoop(n) {
+  const badge = document.getElementById('loop-badge');
+  badge.textContent = 'Loop ' + n;
+  badge.classList.remove('flash');
+  void badge.offsetWidth; // reflow to restart animation
+  badge.classList.add('flash');
+}
+
+function addUiNote(text, cls) {
+  const panel = document.getElementById('ui-panel');
+  const node = el('div', cls || 'status-note', escapeHtml(text));
+  panel.appendChild(node);
+  scrollToBottom(panel);
+}
+
+function addBubble(text, who) {
+  const panel = document.getElementById('ui-panel');
+  const node = el('div', 'bubble ' + who, escapeHtml(text));
+  panel.appendChild(node);
+  scrollToBottom(panel);
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+function addLoopDivider(n) {
+  const panel = document.getElementById('stream-panel');
+  const node = el('div', 'loop-divider', '── Loop ' + n + ' 시작 ──');
+  panel.appendChild(node);
+  scrollToBottom(panel);
+}
+
+function addEventCard(step) {
+  const panel = document.getElementById('stream-panel');
+  const card = el('div', 'ev-card ' + (step.event_type || 'other') + ' just-added');
+  const head = el('div', 'ev-head');
+  head.appendChild(el('span', null, escapeHtml(step.title || step.event_type || 'Event')));
+  head.appendChild(el('span', 'ev-num', '#' + (step.n ?? '?') + (step.loop ? (' · Loop ' + step.loop) : '')));
+  card.appendChild(head);
+  const pre = el('pre', null, escapeHtml(step.body || ''));
+  card.appendChild(pre);
+  panel.appendChild(card);
+  scrollToBottom(panel);
+  setTimeout(() => card.classList.remove('just-added'), 1400);
+
+  if (step.event_type && step.event_type !== 'message_user_pending') {
+    eventCount += 1;
+    document.getElementById('stream-count').textContent = '누적 이벤트: ' + eventCount + '개';
+  }
+}
+
+function setActiveTool(toolName) {
+  ['tool-terminal', 'tool-file_editor', 'tool-browser'].forEach(id => {
+    document.getElementById(id).classList.remove('active');
+  });
+  let id = null;
+  const t = (toolName || '').toLowerCase();
+  if (t.includes('terminal') || t.includes('bash')) id = 'tool-terminal';
+  else if (t.includes('file')) id = 'tool-file_editor';
+  else if (t.includes('browser')) id = 'tool-browser';
+  if (id) document.getElementById(id).classList.add('active');
+}
+
+function appendRuntimeLog(text) {
+  const log = document.getElementById('runtime-log');
+  log.textContent += '\n' + text;
+  scrollToBottom(log);
+}
+
+function handleStep(step) {
+  switch (step.type) {
+    case 'status':
+      setStatus(step.message);
+      addUiNote(step.message);
+      break;
+    case 'phase':
+      setStatus(step.message);
+      addUiNote('▸ ' + step.message, 'status-note');
+      break;
+    case 'loop_start':
+      currentLoop = step.loop;
+      flashLoop(step.loop);
+      addLoopDivider(step.loop);
+      break;
+    case 'runtime':
+      setActiveTool(step.tool);
+      document.getElementById('runtime-note').textContent =
+        'Loop ' + step.loop + ' · 현재 실행 중: ' + step.tool;
+      appendRuntimeLog('$ [' + step.tool + '] 실행 중...');
+      break;
+    case 'event':
+      if (step.event_type === 'message_user_pending') {
+        addBubble(step.body, 'user');
+      } else if (step.event_type === 'message_user') {
+        // 이미 pending 버블로 표시했으므로 스트림 카드만 추가
+        addEventCard(step);
+      } else if (step.event_type === 'message_agent') {
+        addBubble(step.body, 'agent');
+        addEventCard(step);
+      } else {
+        addEventCard(step);
+        if (step.event_type === 'observation') {
+          appendRuntimeLog('→ ' + (step.body || '').slice(0, 400));
+        }
+      }
+      break;
+    case 'done':
+      setStatus(step.message);
+      addUiNote('🏁 ' + step.message, 'status-note');
+      document.getElementById('start-btn').disabled = false;
+      break;
+    case 'error_fatal':
+      setStatus('❌ ' + step.message);
+      addUiNote('❌ ' + step.message, 'status-note');
+      document.getElementById('start-btn').disabled = false;
+      break;
+  }
+}
+
+function connectSSE() {
+  if (evtSource) return;
+  evtSource = new EventSource('/events');
+  evtSource.onmessage = (e) => {
+    try {
+      const step = JSON.parse(e.data);
+      handleStep(step);
+    } catch (err) { console.error(err); }
+  };
+}
+
+async function startDemo() {
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+  document.getElementById('ui-panel').innerHTML = '';
+  document.getElementById('stream-panel').innerHTML = '';
+  document.getElementById('runtime-log').textContent = '$ 대기 중...';
+  document.getElementById('runtime-note').textContent = '아직 실행된 도구가 없습니다.';
+  eventCount = 0;
+  document.getElementById('stream-count').textContent = '누적 이벤트: 0개';
+  currentLoop = 0;
+  document.getElementById('loop-badge').textContent = 'Loop 0';
+
+  const task = document.getElementById('task-input').value;
+  const res = await fetch('/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task }),
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    alert(data.error);
+    btn.disabled = false;
+    return;
+  }
+}
+
+connectSSE();
+</script>
+
+</body>
+</html>
